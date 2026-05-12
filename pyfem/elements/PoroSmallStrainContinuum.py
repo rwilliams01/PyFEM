@@ -8,6 +8,12 @@ from pyfem.util.kinematics      import Kinematics
 from numpy import zeros, dot, outer, ones , eye, ix_, linalg, tensordot 
 
 import sys
+#-------------------------------------------------------------------------------
+# TODO:
+# split and remove thermal implementation
+# add internal force for mass balance fluid (e.g liquid water)
+# add stiffness and damping matrices from linearized internal force for mass balance fluid
+#-------------------------------------------------------------------------------
 
 class ThermoSmallStrainContinuum( Element ):
   
@@ -17,10 +23,10 @@ class ThermoSmallStrainContinuum( Element ):
     self.rank = props.rank
 
     if self.rank == 2:
-      self.dofTypes = [ 'u' , 'v' , 'temp' ]
+      self.dofTypes = [ 'u' , 'v' , 'p_fluid' ]
       self.nstr = 3
     elif self.rank == 3:
-      self.dofTypes = [ 'u' , 'v' , 'w' , 'temp' ]
+      self.dofTypes = [ 'u' , 'v' , 'w' , 'p_fluid' ]
       self.nstr = 6
 
     self.kin = Kinematics(self.rank,self.nstr)
@@ -49,12 +55,12 @@ class ThermoSmallStrainContinuum( Element ):
        
     sData = getElemShapeData( elemdat.coords )
     
-    dDofs,tDofs = self.splitDofIDs( len(elemdat.coords) )
+    dDofs,pfDofs = self.splitDofIDs( len(elemdat.coords) )
     
-    temp0 = elemdat.state [tDofs] - elemdat.Dstate[tDofs]
+    temp0 = elemdat.state [pfDofs] - elemdat.Dstate[pfDofs]
     
     if self.transient:
-      ctt      = zeros(shape=(len(tDofs),len(tDofs)))
+      ctt      = zeros(shape=(len(pfDofs),len(pfDofs)))
       invdtime = 1.0/self.solverStat.dtime
                        
     for iInt,iData in enumerate(sData):
@@ -64,9 +70,9 @@ class ThermoSmallStrainContinuum( Element ):
       self.kin.strain  = dot ( B , elemdat.state [dDofs] )
       self.kin.dstrain = dot ( B , elemdat.Dstate[dDofs] )
       
-      temp     = sum( iData.h * elemdat.state [tDofs] )
-      dtemp    = sum( iData.h * elemdat.Dstate[tDofs] )
-      gradTemp = dot( iData.dhdx.transpose() , elemdat.state [tDofs] )
+      temp     = sum( iData.h * elemdat.state [pfDofs] )
+      dtemp    = sum( iData.h * elemdat.Dstate[pfDofs] )
+      gradTemp = dot( iData.dhdx.transpose() , elemdat.state [pfDofs] )
             
       self.kin.strain[:self.nstr]  += -self.alpha * temp
       self.kin.dstrain[:self.nstr] += -self.alpha * dtemp 
@@ -77,10 +83,10 @@ class ThermoSmallStrainContinuum( Element ):
         dot ( B.transpose() , dot ( tang , B ) ) * iData.weight
         
       dsdt = -1.0 * dot( tang , self.alpha )  
-      elemdat.stiff[ix_(dDofs,tDofs)] += \
+      elemdat.stiff[ix_(dDofs,pfDofs)] += \
         dot ( B.transpose() , outer ( dsdt , iData.h ) ) * iData.weight
       
-      elemdat.stiff[ix_(tDofs,tDofs)] += \
+      elemdat.stiff[ix_(pfDofs,pfDofs)] += \
         dot ( iData.dhdx , dot( self.D , iData.dhdx.transpose() ) ) * iData.weight
   
       elemdat.fint[dDofs] += dot ( B.transpose() , sigma ) * iData.weight
@@ -92,18 +98,18 @@ class ThermoSmallStrainContinuum( Element ):
       self.appendNodalOutput( self.labels , dot(self.D,gradTemp) ) 
     
     if self.transient:  
-      ktt0 = invdtime * ctt - elemdat.stiff[ix_(tDofs,tDofs)] * \
+      ktt0 = invdtime * ctt - elemdat.stiff[ix_(pfDofs,pfDofs)] * \
         ( 1.0-self.theta )
       
       elemdat.stiff *= self.theta
       
-      elemdat.stiff[ix_(tDofs,tDofs)] += invdtime * ctt 
+      elemdat.stiff[ix_(pfDofs,pfDofs)] += invdtime * ctt 
         
-    elemdat.fint[tDofs] += \
-      dot ( elemdat.stiff[ix_(tDofs,tDofs)] , elemdat.state[tDofs] )
+    elemdat.fint[pfDofs] += \
+      dot ( elemdat.stiff[ix_(pfDofs,pfDofs)] , elemdat.state[pfDofs] )
       
     if self.transient:
-      elemdat.fint[tDofs] += -dot ( ktt0 , temp0 )
+      elemdat.fint[pfDofs] += -dot ( ktt0 , temp0 )
      
 #-------------------------------------------------------------------------------
 #
@@ -113,9 +119,9 @@ class ThermoSmallStrainContinuum( Element ):
      
     sData = getElemShapeData( elemdat.coords )
     
-    dDofs,tDofs = self.splitDofIDs( len(elemdat.coords) )
+    dDofs,pfDofs = self.splitDofIDs( len(elemdat.coords) )
     
-    temp0 = elemdat.state [tDofs] - elemdat.Dstate[tDofs]
+    temp0 = elemdat.state [pfDofs] - elemdat.Dstate[pfDofs]
     
     stiff = zeros(shape=(4,4))
     
@@ -130,16 +136,16 @@ class ThermoSmallStrainContinuum( Element ):
       self.kin.strain  = dot ( B , elemdat.state [dDofs] )
       self.kin.dstrain = dot ( B , elemdat.Dstate[dDofs] )
       
-      temp     = sum( iData.h * elemdat.state [tDofs] )
-      dtemp    = sum( iData.h * elemdat.Dstate[tDofs] )
-      gradTemp = dot( iData.dhdx.transpose() , elemdat.state [tDofs] )
+      temp     = sum( iData.h * elemdat.state [pfDofs] )
+      dtemp    = sum( iData.h * elemdat.Dstate[pfDofs] )
+      gradTemp = dot( iData.dhdx.transpose() , elemdat.state [pfDofs] )
             
       self.kin.strain[:self.nstr]  += -self.alpha * temp
       self.kin.dstrain[:self.nstr] += -self.alpha * dtemp 
             
       sigma,tang = self.mat.getStress( self.kin )
             
-      stiff[ix_(tDofs,tDofs)] += \
+      stiff[ix_(pfDofs,pfDofs)] += \
         dot ( iData.dhdx , dot( self.D , iData.dhdx.transpose() ) ) * iData.weight
   
       elemdat.fint[dDofs] += dot ( B.transpose() , sigma ) * iData.weight
@@ -155,10 +161,10 @@ class ThermoSmallStrainContinuum( Element ):
       
       stiff += invdtime * ctt 
         
-    elemdat.fint[tDofs] += dot ( stiff , elemdat.state[tDofs] )
+    elemdat.fint[pfDofs] += dot ( stiff , elemdat.state[pfDofs] )
       
     if self.transient:
-      elemdat.fint[tDofs] += -dot ( ktt0 , temp0 )
+      elemdat.fint[pfDofs] += -dot ( ktt0 , temp0 )
        
 #-------------------------------------------------------------------------------
 #  getBmatrix
@@ -198,7 +204,7 @@ class ThermoSmallStrainContinuum( Element ):
   def splitDofIDs( self , n ):
   
     '''Routine to split the dof IDs in two groups, one for the displacement 
-       degrees of freedom, the second for the phase field degres of freedom. 
+       degrees of freedom, the second for the pore fluid degrees of freedom. 
        n is the number of degrees of freedom in this model'''
     
     if self.rank == 2:
