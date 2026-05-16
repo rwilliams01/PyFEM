@@ -196,7 +196,7 @@ class CrisfieldTruss ( Element ):
 
     f_int = fac * np.array([a, b, -a, -b])
 
-
+    return f_int
 #------------------------------------------
   def getInternalForce3D ( self, elemdat ):
 
@@ -232,13 +232,14 @@ class CrisfieldTruss ( Element ):
     fac = (S11 * A0) / L
 
     f_int = fac * np.array([a, b, c, -a, -b, -c])
-
+    
+    return f_int
 #------------------------------------------
 
   def getStrain( self , elemdat):
 
     L = norm( elemdat.coords[1]-elemdat.coords[0] )
-    l2 = 0
+    l2 = 0.0
 
     if self.rank == 2:
       X_e1 = elemdat.coords[0]
