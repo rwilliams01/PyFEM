@@ -7,7 +7,7 @@ from pyfem.util.transformations import toElementCoordinates, toGlobalCoordinates
 from numpy import zeros, dot, array, eye, outer
 from scipy.linalg import norm
 
-class Truss ( Element ):
+class CrisfieldCableTruss ( Element ):
 
   #Number of dofs per element
   dofTypes = ['u','v']

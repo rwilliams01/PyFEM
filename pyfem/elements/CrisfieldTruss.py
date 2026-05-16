@@ -6,22 +6,23 @@ from pyfem.util.transformations import toElementCoordinates, toGlobalCoordinates
 
 from numpy import zeros, dot, array, eye, outer
 from scipy.linalg import norm
-
+import numpy as np
 # coords: Nodal coordinates
-# tate: Current displacement vector
+# state: Current displacement vector
 # Dstate: Displacement increment
 # stiff: Element stiffness matrix (output)
 # fint: Internal force vector (output)
 
-class Truss ( Element ):
+class CrisfieldTruss ( Element ):
 
   #Number of dofs per element
   dofTypes = ['u','v']
-  
+
   def __init__ ( self, elnodes , props ):
     Element.__init__( self, elnodes , props )
 
     self.rank = props.rank
+    self.rank = 2
 
     if self.rank == 2:
       self.dofTypes = [ 'u' , 'v' ]
@@ -36,12 +37,15 @@ class Truss ( Element ):
 
 
   def getTangentStiffness ( self, elemdat ):
-
+#    print(elemdat.coords)
     #Compute the element tangent stiffness matrix in the global coordinate system
     if self.rank == 2:
       elemdat.stiff = self.getTangentStiffness2D (elemdat)
+      elemdat.fint  = self.getInternalForce2D (elemdat)
+
     elif self.rank == 3:
       elemdat.stiff = self.getTangentStiffness3D (elemdat)
+      elemdat.fint  = self.getInternalForce3D (elemdat)
 
 
 #-----------------------------------------------------------------
@@ -56,14 +60,22 @@ class Truss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1 = elemdat.state[0]
-    u_e2 = elemdat.state[1]
+    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1[ 0]  = elemdat.state[0]
+    u_e1[ 1]  = elemdat.state[1]
+    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2[ 0]  = elemdat.state[2]
+    u_e2[ 1]  = elemdat.state[3]
+
 
     a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
     b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
 
     # current length squared
     l2 = a**2 + b**2
+
+    # Second Piola-Kirchoff stress
+    S11 = self.getStress( elemdat)
 
     # geometric stiffness matrix
     K_geo = (S11 * A0 / L) * np.array([
@@ -84,7 +96,7 @@ class Truss ( Element ):
     # total tangent stiffness
     K = K_geo + K_mat
 
-    return k
+    return K
 #-----------------------------------------------------------------
   def getTangentStiffness3D ( self, elemdat ):
 
@@ -97,14 +109,23 @@ class Truss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1 = elemdat.state[0]
-    u_e2 = elemdat.state[1]
+    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1[ 0]  = elemdat.state[0]
+    u_e1[ 1]  = elemdat.state[1]
+    u_e1[ 2]  = elemdat.state[2]
+    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2[ 0]  = elemdat.state[3]
+    u_e2[ 1]  = elemdat.state[4]
+    u_e2[ 2]  = elemdat.state[5]
 
     a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
     b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
     c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
 
-    l2 = a*a + b*b + c*c
+    l2 = a**2 + b**2 + c**2
+
+    # Second Piola-Kirchoff stress
+    S11 = self.getStress( elemdat)
 
     # geometric stiffness matrix
     K_geo = (S11 * A0 / L) * np.array([
@@ -128,6 +149,8 @@ class Truss ( Element ):
 
     K = K_geo + K_mat
 
+    return K
+
 #-----------------------------------------------------------------
 
   def getInternalForce ( self, elemdat ):
@@ -150,8 +173,12 @@ class Truss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1 = elemdat.state[0]
-    u_e2 = elemdat.state[1]
+    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1[ 0]  = elemdat.state[0]
+    u_e1[ 1]  = elemdat.state[1]
+    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2[ 0]  = elemdat.state[2]
+    u_e2[ 1]  = elemdat.state[3]
 
     a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
     b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
@@ -160,12 +187,10 @@ class Truss ( Element ):
     # current length squared
     l2 = a**2 + b**2
 
-    # Green-Lagrange strain
-    E11 = (1 / (2 * L**2)) * (l2 - L**2)
-    # Second Piola-Kirchoff stres
-    S11 = E*E11
+    # Second Piola-Kirchoff stress
+    S11 = self.getStress( elemdat)
 #    #Update the history parameter (check acuatlly is sencond piola and not cauchy)
-#    self.setHistoryParameter( 'sigma', S11 )
+    self.setHistoryParameter( 'sigma', S11 )
 
     fac = (S11 * A0) / L
 
@@ -184,21 +209,25 @@ class Truss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1 = elemdat.state[0]
-    u_e2 = elemdat.state[1]
+    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1[ 0]  = elemdat.state[0]
+    u_e1[ 1]  = elemdat.state[1]
+    u_e1[ 2]  = elemdat.state[2]
+    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2[ 0]  = elemdat.state[3]
+    u_e2[ 1]  = elemdat.state[4]
+    u_e2[ 2]  = elemdat.state[5]
 
     a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
     b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
     c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
 
-    l2 = a*a + b*b + c*c
+    l2 = a**2 + b**2 + c**2
 
-    # Green-Lagrange strain
-    E11 = (1 / (2 * L**2)) * (l2 - L**2)
-    # Second Piola-Kirchoff stres
-    S11 = E*E11
+    # Second Piola-Kirchoff stress
+    S11 = self.getStress( elemdat)
 #    #Update the history parameter (check acuatlly is sencond piola and not cauchy)
-#    self.setHistoryParameter( 'sigma', S11 )
+    self.setHistoryParameter( 'sigma', S11 )
 
     fac = (S11 * A0) / L
 
@@ -215,8 +244,13 @@ class Truss ( Element ):
       X_e1 = elemdat.coords[0]
       X_e2 = elemdat.coords[1]
 
-      u_e1 = elemdat.state[0]
-      u_e2 = elemdat.state[1]
+      u_e1      = np.zeros(elemdat.coords[0].shape)
+      u_e1[ 0]  = elemdat.state[0]
+      u_e1[ 1]  = elemdat.state[1]
+      u_e2      = np.zeros(elemdat.coords[0].shape)
+      u_e2[ 0]  = elemdat.state[2]
+      u_e2[ 1]  = elemdat.state[3]
+
 
       a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
       b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
@@ -228,16 +262,33 @@ class Truss ( Element ):
       X_e1 = elemdat.coords[0]
       X_e2 = elemdat.coords[1]
 
-      u_e1 = elemdat.state[0]
-      u_e2 = elemdat.state[1]
+      u_e1      = np.zeros(elemdat.coords[0].shape)
+      u_e1[ 0]  = elemdat.state[0]
+      u_e1[ 1]  = elemdat.state[1]
+      u_e1[ 2]  = elemdat.state[2]
+      u_e2      = np.zeros(elemdat.coords[0].shape)
+      u_e2[ 0]  = elemdat.state[3]
+      u_e2[ 1]  = elemdat.state[4]
+      u_e2[ 2]  = elemdat.state[5]
 
       a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
       b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
       c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
 
-      l2 = a*a + b*b + c*c
+      l2 = a**2 + b**2 + c**2
 
-    E11 = (1 / (2 * L**2)) * (l2 - L**2)
+    E11 = (1.0 / (2.0 * L**2)) * (l2 - L**2)
 
     return E11
+
+
+  #------------------------------------------
+
+  def getStress( self , elemdat):
+    E   = elemdat.props.E
+    E11 = self.getStrain(elemdat)
+    # Second Piola-Kirchoff stress
+    S11 = E*E11
+
+    return S11
 

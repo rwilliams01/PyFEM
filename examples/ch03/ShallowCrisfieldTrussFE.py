@@ -61,7 +61,7 @@ iterMax = 5
 from pyfem.util.dataStructures import Properties
 
 props = Properties()
-props.TrussElem  = Properties( { 'type' : 'Truss'  , 'E' : 5e6 , 'Area' : 1.0 } )
+props.CrisfieldTrussElem  = Properties( { 'type' : 'CrisfieldTruss'  , 'E' : 5e6 , 'Area' : 1.0 } )
 props.SpringElem = Properties( { 'type' : 'Spring' , 'k' : 2000. } )
 
 #############################
@@ -84,8 +84,8 @@ from pyfem.fem.ElementSet import ElementSet
 
 elements = ElementSet( nodes , props )
 
-elements.add( 1, 'TrussElem'  , [2,4]  )
-elements.add( 2, 'TrussElem'  , [3,4]  )
+elements.add( 1, 'CrisfieldTrussElem'  , [2,4]  )
+elements.add( 2, 'CrisfieldTrussElem'  , [3,4]  )
 elements.add( 3, 'SpringElem' , [1,4]  )
 
 #DofSpace
