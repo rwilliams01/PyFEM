@@ -7,9 +7,12 @@ from pyfem.util.transformations import toElementCoordinates, toGlobalCoordinates
 from numpy import zeros, dot, array, eye, outer
 from scipy.linalg import norm
 
-# TOOD: implement the 2D element first
-# TODO: we retirve the coordinates
-# TODO: implement internla force 2d and 3d, the same for he siffntes with rank we should by pass it
+# coords: Nodal coordinates
+# tate: Current displacement vector
+# Dstate: Displacement increment
+# stiff: Element stiffness matrix (output)
+# fint: Internal force vector (output)
+
 class Truss ( Element ):
 
   #Number of dofs per element
@@ -18,89 +21,52 @@ class Truss ( Element ):
   def __init__ ( self, elnodes , props ):
     Element.__init__( self, elnodes , props )
 
+    self.rank = props.rank
+
+    if self.rank == 2:
+      self.dofTypes = [ 'u' , 'v' ]
+    elif self.rank == 3:
+      self.dofTypes = [ 'u' , 'v' , 'w' ]
+
     #Initialize the history parameter
     self.setHistoryParameter( 'sigma', 0. )
     self.commitHistory()
     
     self.family = "BEAM"
 
-#    self.rank = props.rank
-
-#    if self.rank == 2:
-#      self.dofTypes = [ 'u' , 'v' ]
-#      self.nstr = 3
-#      #self.outputLabels = ["s11","s22","s12"]
-#    elif self.rank == 3:
-#      self.dofTypes = [ 'u' , 'v' , 'w' ]
-#      self.nstr = 6
 
   def getTangentStiffness ( self, elemdat ):
 
+    #Compute the element tangent stiffness matrix in the global coordinate system
+    if self.rank == 2:
+      elemdat.stiff = self.getTangentStiffness2D (elemdat)
+    elif self.rank == 3:
+      elemdat.stiff = self.getTangentStiffness3D (elemdat)
 
-    # reference implementation
-    #------------------------------------------
-    a  = toElementCoordinates( elemdat.state , elemdat.coords )
-    Da = toElementCoordinates( elemdat.Dstate, elemdat.coords )
-    a0 = a - Da
-
-    #Compute l0 and strains
-
-    self.l0 = norm( elemdat.coords[1]-elemdat.coords[0] )
-   
-    ( epsilon , Depsilon ) = self.getStrain( a , a0 )
-
-    #Compute the stress increment (multiplied
-    #with the undeformed cross-sectional area)
-    Dsigma = elemdat.props.E * Depsilon
-
-    #Compute the current stress (multiplied
-    #with the undeformed cross-sectional area)
-    sigma = self.getHistoryParameter('sigma') + Dsigma
-
-    #Update the history parameter
-    self.setHistoryParameter( 'sigma', sigma )
-
-    #Compute BL in the element coordinate system
-
-    BL = self.getBL( a )
-
-    #Compute the element stiffness in the element coordinate system
-    KL = elemdat.props.E * elemdat.props.Area * self.l0 * outer( BL , BL )
-
-    KNL = self.getKNL( sigma , elemdat.props.Area )
-
-    elStiff = KL + KNL
-
-    #Rotate element tangent stiffness to the global coordinate system
-    elemdat.stiff = toGlobalCoordinates( elStiff , elemdat.coords )
-
-    #Compute the element internal force vector in the element coordinate system
-    elFint = self.l0 * sigma * elemdat.props.Area * BL
-
-    #Rotate element fint to the global coordinate system
-    elemdat.fint = toGlobalCoordinates( elFint , elemdat.coords )
 
 #-----------------------------------------------------------------
+  def getTangentStiffness2D ( self, elemdat ):
 
-  def getInternalForce ( self, elemdat ):
-
+    E   = elemdat.props.E
+    A0  = elemdat.props.Area
+    L   = norm( elemdat.coords[1]-elemdat.coords[0] )
     # 2D:
     # coordinate differences
-    a = X[e1, 0] + u[e1, 0] - X[e2, 0] - u[e2, 0]
-    b = X[e1, 1] + u[e1, 1] - X[e2, 1] - u[e2, 1]
+
+    X_e1 = elemdat.coords[0]
+    X_e2 = elemdat.coords[1]
+
+    u_e1 = elemdat.state[0]
+    u_e2 = elemdat.state[1]
+
+    a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+    b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
 
     # current length squared
     l2 = a**2 + b**2
 
-    # Green-Lagrange stress
-    S11 = (E / (2 * L**2)) * (l2 - L**2)
-
-    fac = (S11 * A0) / L
-
-    f_int = fac * np.array([a, b, -a, -b])
-
     # geometric stiffness matrix
-    k_geo = (S11 * A0 / L) * np.array([
+    K_geo = (S11 * A0 / L) * np.array([
         [ 1,  0, -1,  0],
         [ 0,  1,  0, -1],
         [-1,  0,  1,  0],
@@ -108,7 +74,7 @@ class Truss ( Element ):
     ])
 
     # material stiffness matrix
-    k_mat = (E * A0 / L**3) * np.array([
+    K_mat = (E * A0 / L**3) * np.array([
         [ a**2,  a*b,   -a**2, -a*b],
         [ a*b,   b**2,  -a*b,  -b**2],
         [-a**2, -a*b,    a**2,  a*b],
@@ -116,22 +82,32 @@ class Truss ( Element ):
     ])
 
     # total tangent stiffness
-    k = k_geo + k_mat
+    K = K_geo + K_mat
 
+    return k
+#-----------------------------------------------------------------
+  def getTangentStiffness3D ( self, elemdat ):
+
+    E   = elemdat.props.E
+    A0  = elemdat.props.Area
+    L = norm( elemdat.coords[1]-elemdat.coords[0] )
     # 3D:
-    a = X[e1, 0] + u[e1, 0] - X[e2, 0] - u[e2, 0]
-    b = X[e1, 1] + u[e1, 1] - X[e2, 1] - u[e2, 1]
-    c = X[e1, 2] + u[e1, 2] - X[e2, 2] - u[e2, 2]
+    # coordinate differences
+
+    X_e1 = elemdat.coords[0]
+    X_e2 = elemdat.coords[1]
+
+    u_e1 = elemdat.state[0]
+    u_e2 = elemdat.state[1]
+
+    a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+    b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
+    c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
 
     l2 = a*a + b*b + c*c
 
-    S11 = (E / (2 * L**2)) * (l2 - L**2)
-
-    fac = (S11 * A0) / L
-
-    f_int = fac * np.array([a, b, c, -a, -b, -c])
-
-    k_geo = (S11 * A0 / L) * np.array([
+    # geometric stiffness matrix
+    K_geo = (S11 * A0 / L) * np.array([
         [ 1, 0, 0, -1, 0, 0],
         [ 0, 1, 0, 0, -1, 0],
         [ 0, 0, 1, 0, 0, -1],
@@ -140,7 +116,8 @@ class Truss ( Element ):
         [ 0, 0,-1, 0, 0, 1]
     ])
 
-    k_mat = (E * A0 / L**3) * np.array([
+    # material stiffness matrix
+    K_mat = (E * A0 / L**3) * np.array([
         [ a*a, a*b, a*c, -a*a, -a*b, -a*c],
         [ a*b, b*b, b*c, -a*b, -b*b, -b*c],
         [ a*c, b*c, c*c, -a*c, -b*c, -c*c],
@@ -149,75 +126,118 @@ class Truss ( Element ):
         [-a*c,-b*c,-c*c,  a*c,  b*c,  c*c]
     ])
 
-    k = k_geo + k_mat
-    # reference implementation
-    #------------------------------------------
+    K = K_geo + K_mat
 
-    #Compute the current state vector
+#-----------------------------------------------------------------
 
-    a  = toElementCoordinates( elemdat.state , elemdat.coords )
-    Da = toElementCoordinates( elemdat.Dstate, elemdat.coords )
+  def getInternalForce ( self, elemdat ):
 
-    a0 = a - Da
+    #Compute the element internal force vector in the global coordinate system
+    if self.rank == 2:
+      elemdat.fint = self.getInternalForce2D (elemdat)
+    elif self.rank == 3:
+      elemdat.fint = self.getInternalForce3D (elemdat)
 
-    #Compute l0 and strains
-    self.l0 = norm( elemdat.coords[1]-elemdat.coords[0] )
+#------------------------------------------
+  def getInternalForce2D ( self, elemdat ):
 
-    ( epsilon , Depsilon ) = self.getStrain( a , a0 )
-  
-    #Compute the stress increment (multiplied
-    #with the undeformed cross-sectional area)
-    Dsigma = elemdat.props.E * Depsilon
+    E   = elemdat.props.E
+    A0  = elemdat.props.Area
+    L   = norm( elemdat.coords[1]-elemdat.coords[0] )
+    # 2D:
+    # coordinate differences
 
-    #Compute the current stress (multiplied
-    #with the undeformed cross-sectional area)
-    sigma = self.getHistoryParameter('sigma') + Dsigma
+    X_e1 = elemdat.coords[0]
+    X_e2 = elemdat.coords[1]
 
-    #Update the history parameter
-    self.setHistoryParameter( 'sigma', sigma )
+    u_e1 = elemdat.state[0]
+    u_e2 = elemdat.state[1]
 
-    #Compute BL in the parent element coordinate system
-    BL = self.getBL( a )
+    a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+    b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
 
-    #Compute the element internal force vector in the element coordinate system
-    elFint = self.l0 * sigma * elemdat.props.Area * BL
 
-    #Rotate element fint to the global coordinate system
-    elemdat.fint = toGlobalCoordinates( elFint, elemdat.coords )
+    # current length squared
+    l2 = a**2 + b**2
+
+    # Green-Lagrange strain
+    E11 = (1 / (2 * L**2)) * (l2 - L**2)
+    # Second Piola-Kirchoff stres
+    S11 = E*E11
+#    #Update the history parameter (check acuatlly is sencond piola and not cauchy)
+#    self.setHistoryParameter( 'sigma', S11 )
+
+    fac = (S11 * A0) / L
+
+    f_int = fac * np.array([a, b, -a, -b])
+
+
+#------------------------------------------
+  def getInternalForce3D ( self, elemdat ):
+
+    E   = elemdat.props.E
+    A0  = elemdat.props.Area
+    L = norm( elemdat.coords[1]-elemdat.coords[0] )
+    # 3D:
+    # coordinate differences
+
+    X_e1 = elemdat.coords[0]
+    X_e2 = elemdat.coords[1]
+
+    u_e1 = elemdat.state[0]
+    u_e2 = elemdat.state[1]
+
+    a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+    b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
+    c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
+
+    l2 = a*a + b*b + c*c
+
+    # Green-Lagrange strain
+    E11 = (1 / (2 * L**2)) * (l2 - L**2)
+    # Second Piola-Kirchoff stres
+    S11 = E*E11
+#    #Update the history parameter (check acuatlly is sencond piola and not cauchy)
+#    self.setHistoryParameter( 'sigma', S11 )
+
+    fac = (S11 * A0) / L
+
+    f_int = fac * np.array([a, b, c, -a, -b, -c])
 
 #------------------------------------------
 
-  def getStrain( self , a , a0 ):
+  def getStrain( self , elemdat):
 
-    epsilon  = (a[2]-a[0])/self.l0 + 0.5*((a[2]-a[0])/self.l0)**2 + 0.5*((a[3]-a[1])/self.l0)**2
-    epsilon0 = (a0[2]-a0[0])/self.l0 + 0.5*((a0[2]-a0[0])/self.l0)**2 + 0.5*((a0[3]-a0[1])/self.l0)**2
+    L = norm( elemdat.coords[1]-elemdat.coords[0] )
+    l2 = 0
 
-    #Compute the strain increment
-    Depsilon = epsilon -epsilon0
+    if self.rank == 2:
+      X_e1 = elemdat.coords[0]
+      X_e2 = elemdat.coords[1]
 
-    return epsilon,Depsilon
+      u_e1 = elemdat.state[0]
+      u_e2 = elemdat.state[1]
 
-#-------------------------------------------
+      a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+      b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
 
-  def getBL( self , a ):
+      # current length squared
+      l2 = a**2 + b**2
 
-    BL = zeros( 4 )
+    elif self.rank == 3:
+      X_e1 = elemdat.coords[0]
+      X_e2 = elemdat.coords[1]
 
-    BL[0] = (-1./self.l0)*(1.+(a[2]-a[0])/self.l0)
-    BL[1] = (-1./self.l0)*(a[3]-a[1])/self.l0
-    BL[2] = -BL[0]
-    BL[3] = -BL[1]
+      u_e1 = elemdat.state[0]
+      u_e2 = elemdat.state[1]
 
-    return BL
-#-------------------------------------------
+      a = X_e1[ 0] + u_e1[ 0] - X_e2[ 0] - u_e2[ 0]
+      b = X_e1[ 1] + u_e1[ 1] - X_e2[ 1] - u_e2[ 1]
+      c = X_e1[ 2] + u_e1[ 2] - X_e2[ 2] - u_e2[ 2]
 
-  def getKNL( self , sigma , A0 ):
+      l2 = a*a + b*b + c*c
 
-    KNL = zeros( (4,4) )
+    E11 = (1 / (2 * L**2)) * (l2 - L**2)
 
-    KNL[:2,:2] =  (sigma * A0/self.l0)*eye(2)
-    KNL[:2,2:] = -(sigma * A0/self.l0)*eye(2)
-    KNL[2:,:2] = KNL[:2,2:]
-    KNL[2:,2:] = KNL[:2,:2]
+    return E11
 
-    return KNL
