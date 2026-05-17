@@ -7,6 +7,8 @@ from pyfem.util.transformations import toElementCoordinates, toGlobalCoordinates
 from numpy import zeros, dot, array, eye, outer
 from scipy.linalg import norm
 import numpy as np
+# TODO: check why rank cannot be cnahge from the prop list 
+# TODO: test 3D implementation
 # coords: Nodal coordinates
 # state: Current displacement vector
 # Dstate: Displacement increment
@@ -35,7 +37,6 @@ class CrisfieldTruss ( Element ):
     
     self.family = "BEAM"
 
-
   def getTangentStiffness ( self, elemdat ):
 #    print(elemdat.coords)
     #Compute the element tangent stiffness matrix in the global coordinate system
@@ -60,10 +61,10 @@ class CrisfieldTruss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1      = np.zeros(2)
     u_e1[ 0]  = elemdat.state[0]
     u_e1[ 1]  = elemdat.state[1]
-    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2      = np.zeros(2)
     u_e2[ 0]  = elemdat.state[2]
     u_e2[ 1]  = elemdat.state[3]
 
@@ -109,11 +110,11 @@ class CrisfieldTruss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1      = np.zeros(3)
     u_e1[ 0]  = elemdat.state[0]
     u_e1[ 1]  = elemdat.state[1]
     u_e1[ 2]  = elemdat.state[2]
-    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2      = np.zeros(3)
     u_e2[ 0]  = elemdat.state[3]
     u_e2[ 1]  = elemdat.state[4]
     u_e2[ 2]  = elemdat.state[5]
@@ -173,10 +174,10 @@ class CrisfieldTruss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1      = np.zeros(2)
     u_e1[ 0]  = elemdat.state[0]
     u_e1[ 1]  = elemdat.state[1]
-    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2      = np.zeros(2)
     u_e2[ 0]  = elemdat.state[2]
     u_e2[ 1]  = elemdat.state[3]
 
@@ -209,11 +210,11 @@ class CrisfieldTruss ( Element ):
     X_e1 = elemdat.coords[0]
     X_e2 = elemdat.coords[1]
 
-    u_e1      = np.zeros(elemdat.coords[0].shape)
+    u_e1      = np.zeros(3)
     u_e1[ 0]  = elemdat.state[0]
     u_e1[ 1]  = elemdat.state[1]
     u_e1[ 2]  = elemdat.state[2]
-    u_e2      = np.zeros(elemdat.coords[0].shape)
+    u_e2      = np.zeros(3)
     u_e2[ 0]  = elemdat.state[3]
     u_e2[ 1]  = elemdat.state[4]
     u_e2[ 2]  = elemdat.state[5]
@@ -232,7 +233,7 @@ class CrisfieldTruss ( Element ):
     fac = (S11 * A0) / L
 
     f_int = fac * np.array([a, b, c, -a, -b, -c])
-    
+
     return f_int
 #------------------------------------------
 
@@ -245,10 +246,10 @@ class CrisfieldTruss ( Element ):
       X_e1 = elemdat.coords[0]
       X_e2 = elemdat.coords[1]
 
-      u_e1      = np.zeros(elemdat.coords[0].shape)
+      u_e1      = np.zeros(2)
       u_e1[ 0]  = elemdat.state[0]
       u_e1[ 1]  = elemdat.state[1]
-      u_e2      = np.zeros(elemdat.coords[0].shape)
+      u_e2      = np.zeros(2)
       u_e2[ 0]  = elemdat.state[2]
       u_e2[ 1]  = elemdat.state[3]
 
@@ -263,11 +264,11 @@ class CrisfieldTruss ( Element ):
       X_e1 = elemdat.coords[0]
       X_e2 = elemdat.coords[1]
 
-      u_e1      = np.zeros(elemdat.coords[0].shape)
+      u_e1      = np.zeros(3)
       u_e1[ 0]  = elemdat.state[0]
       u_e1[ 1]  = elemdat.state[1]
       u_e1[ 2]  = elemdat.state[2]
-      u_e2      = np.zeros(elemdat.coords[0].shape)
+      u_e2      = np.zeros(3)
       u_e2[ 0]  = elemdat.state[3]
       u_e2[ 1]  = elemdat.state[4]
       u_e2[ 2]  = elemdat.state[5]
@@ -287,9 +288,14 @@ class CrisfieldTruss ( Element ):
 
   def getStress( self , elemdat):
     E   = elemdat.props.E
+
     E11 = self.getStrain(elemdat)
     # Second Piola-Kirchoff stress
-    S11 = E*E11
+    S11 = E*E11 
+
+    # add initial prestress
+    if hasattr(elemdat.props, "InitialPrestress_S_11"):
+      S11 += elemdat.props.InitialPrestress_S_11
 
     return S11
 
