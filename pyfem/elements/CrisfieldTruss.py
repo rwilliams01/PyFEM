@@ -9,6 +9,7 @@ from scipy.linalg import norm
 import numpy as np
 # TODO: check why rank cannot be cnahge from the prop list 
 # TODO: test 3D implementation
+# info:
 # coords: Nodal coordinates
 # state: Current displacement vector
 # Dstate: Displacement increment
@@ -18,14 +19,16 @@ import numpy as np
 class CrisfieldTruss ( Element ):
 
   #Number of dofs per element
-  dofTypes = ['u','v']
+#  dofTypes = ['u','v']
 
   def __init__ ( self, elnodes , props ):
     Element.__init__( self, elnodes , props )
 
-    self.rank = props.rank
-    self.rank = 2
+#    self.rank = props.rank
+    self.rank = props.dim   
+#    self.rank = 2
 
+    # Number of dofs per element
     if self.rank == 2:
       self.dofTypes = [ 'u' , 'v' ]
     elif self.rank == 3:

@@ -61,7 +61,7 @@ iterMax = 5
 from pyfem.util.dataStructures import Properties
 
 props = Properties()
-props.CrisfieldTrussElem  = Properties( { 'type' : 'CrisfieldTruss'  , 'E' : 5e6 , 'Area' : 1.0, 'InitialPrestress_S_11': 0.0} )
+props.CrisfieldTrussElem  = Properties( { 'dim': 2, 'type' : 'CrisfieldTruss'  , 'E' : 5e6 , 'Area' : 1.0, 'InitialPrestress_S_11': 0.0} )
 props.SpringElem = Properties( { 'type' : 'Spring' , 'k' : 2000. } )
 
 #############################
