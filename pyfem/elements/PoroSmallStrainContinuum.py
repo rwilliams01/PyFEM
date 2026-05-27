@@ -110,12 +110,47 @@ class ThermoSmallStrainContinuum( Element ):
       
     if self.transient:
       elemdat.fint[pfDofs] += -dot ( ktt0 , temp0 )
-     
+
 #-------------------------------------------------------------------------------
 #
 #-------------------------------------------------------------------------------
 
   def getInternalForce ( self, elemdat ):
+     
+    sData = getElemShapeData( elemdat.coords )
+    
+    dDofs,pfDofs = self.splitDofIDs( len(elemdat.coords) )
+    
+    p_fluid_0 = elemdat.state [pfDofs] - elemdat.Dstate[pfDofs]
+    
+    stiff = zeros(shape=(4,4))
+    
+    if self.transient:
+      ctt = zeros(shape=(4,4))
+      invdtime = 1.0/self.solverStat.dtime
+                 
+    for iInt,iData in enumerate(sData):
+      
+      B = self.getBmatrix( iData.dhdx )
+
+      self.kin.strain  = dot ( B , elemdat.state [dDofs] )
+      self.kin.dstrain = dot ( B , elemdat.Dstate[dDofs] )
+      
+      p_fluid     = sum( iData.h * elemdat.state [pfDofs] )
+      dp_fluid    = sum( iData.h * elemdat.Dstate[pfDofs] )
+      gradP_fluid = dot( iData.dhdx.transpose() , elemdat.state [pfDofs] )
+
+      sigma,tang = self.mat.getStress( self.kin )
+
+      # TODO: implement sigma total and internal force mechanical
+
+      # TODO: implement the fluid mass balance internal force first steady then transient
+
+#-------------------------------------------------------------------------------
+#
+#-------------------------------------------------------------------------------
+
+  def getInternalForce_old ( self, elemdat ):
      
     sData = getElemShapeData( elemdat.coords )
     
